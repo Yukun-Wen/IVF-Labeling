@@ -126,3 +126,18 @@ data anywhere.
 Code: MIT. The demo frames and clip are AI-generated illustrations under
 CC BY-NC-SA 4.0 — see [NOTICE.md](NOTICE.md). They are not patient data and are
 not for training.
+
+## The two editions, and what each can do
+
+| | hosted (GitHub Pages) | local package (zip) |
+|---|---|---|
+| URL | <https://Yukun-Wen.github.io/IVF-Labeling/> | http://127.0.0.1:8770 |
+| needs Python | no | yes |
+| where labels are stored | browser + **Save to file** writes a real .jsonl you keep | data/labels.jsonl on disk, automatically |
+| frame images persisted | no — re-upload after a restart | yes, copied into data/frames/ |
+| frame interval setting | yes | yes |
+| stills per video | 4–200 | 4–200 |
+
+The hosted edition is for trying it and for quick sessions; the local package is
+the one to use when you want the frames and the labels kept together on disk.
+Both write the same record schema, so labels from either can be merged.

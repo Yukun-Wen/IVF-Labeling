@@ -79,6 +79,7 @@ kbd{background:#eef3f7;border:1px solid var(--line);border-radius:4px;padding:0 
   </div>
   <span style="flex:1"></span>
   <span class="hint">keys: <kbd>&larr;</kbd><kbd>&rarr;</kbd> frame · <kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel box</span>
+  <button id="fileBtn" onclick="pickSaveFile()" title="Write labels straight to a file on this computer">Save to file</button>
   <button onclick="exportJsonl()">Export JSONL</button>
 </header>
 
@@ -93,6 +94,17 @@ kbd{background:#eef3f7;border:1px solid var(--line);border-radius:4px;padding:0 
       <button class="tiny" onclick="pickFiles()">Load my frames</button>
       <button class="tiny" onclick="pickVideo()">Load my video</button>
       <button class="tiny" onclick="loadSample()">Sample</button>
+    </div>
+    <div class="filebar" style="align-items:center">
+      <label class="hint" for="videoN">stills per video</label>
+      <input type="number" id="videoN" min="4" max="200" value="48"
+             style="width:82px" onchange="localStorage.setItem('ivf-videon',this.value)">
+    </div>
+    <div class="filebar" style="align-items:center">
+      <label class="hint" for="interval">frame interval</label>
+      <input type="number" id="interval" min="0.5" max="1440" step="0.5"
+             style="width:82px" onchange="setInterval2(this.value)">
+      <span class="hint">minutes per frame</span>
     </div>
     <input type="file" id="fFiles" accept="image/*" multiple hidden onchange="onFiles(event)">
     <input type="file" id="fVideo" accept="video/*" hidden onchange="onVideo(event)">
@@ -170,8 +182,11 @@ kbd{background:#eef3f7;border:1px solid var(--line);border-radius:4px;padding:0 
     <table><thead><tr><th>task</th><th>video</th><th>frame</th><th>qtype</th>
       <th>answer</th><th>boxes</th><th></th></tr></thead>
       <tbody id="savedBody"></tbody></table>
-    <p class="hint">Data lives in this browser's localStorage. Export before clearing the
-      browser cache, or after finishing a session.</p>
+    <p class="hint">Labels are kept in this browser's localStorage automatically.
+      Press <b>Save to file</b> in the header to also write them to a real file on your
+      computer — that copy survives clearing the browser, and it is the one to keep.
+      Frame images are not persisted on this hosted version; use the downloadable
+      local package if you need the frames stored too.</p>
   </div>
 </section>
 
@@ -281,7 +296,10 @@ const SAMPLE={
 
 let FRAMES=[],IDX=0,BOXES=[],DRAG=null,img=null,scale=1;
 let MED={kind:"none",video:false},TASK=null;
-const FPH=60/SAMPLE.interval_min;
+/* the acquisition interval is a setting now: it is the only number that turns
+   a frame index into hours, so it must not be hardcoded */
+let INTERVAL=parseFloat(localStorage.getItem('ivf-interval')||'')||SAMPLE.interval_min;
+function fph(){return INTERVAL>0?60/INTERVAL:null}
 
 /* ---------------------------------------------------------------- storage -- */
 const KEY='ivf-labels-v1';
@@ -309,6 +327,11 @@ function boot(){
   drawEmpty('click "Sample" to load the demo clip');
   // deep link: ?task=cs opens that task kind straight away
   const qs=new URLSearchParams(location.search);
+  const alias={labels:'saved',label:'saved',annotation:'annot',annotate:'annot'};
+  const rawTab=(qs.get('tab')||'').toLowerCase();
+  const startTab=alias[rawTab]||rawTab;
+  if(['annot','saved','schema'].includes(startTab))tab(startTab);
+  syncInterval();renderFileState();
   const want=qs.get('task');
   if(want&&KINDS[want]) openTask((SAMPLE.video_id)+'__'+want,want,KINDS[want].title);
   const at=qs.get('t');
@@ -331,6 +354,7 @@ function loadSample(){
   buildQueue();
   $('taskTitle').textContent='no task selected';
   $('pos').innerHTML='<span class="badge b-illu">illustration · not patient data</span> '+FRAMES.length+' frames loaded';
+  syncInterval();
   renderPhases();
   drawEmpty('pick a task on the left');
   toast('sample clip loaded');
@@ -360,7 +384,8 @@ async function onVideo(ev){
   v.src=url; v.muted=true;
   await new Promise(r=>{v.onloadedmetadata=r});
   if(!v.videoWidth){ toast('this browser could not decode that video'); return }
-  const N=24, dur=v.duration;
+  const N=Math.max(4,Math.min(200,parseInt(document.getElementById('videoN')?.value||'48',10)));
+  const dur=v.duration;
   const c=document.createElement('canvas');
   c.width=v.videoWidth; c.height=v.videoHeight;
   const cx=c.getContext('2d');
@@ -482,7 +507,8 @@ function showStill(src,frameNo,extra){
   $('jump').value=frameNo;
   /* only the sample clip has a known acquisition interval; do not invent hours
      for arbitrary uploaded frames */
-  const timeTxt=MED.kind==='illustration'?' · '+(frameNo/FPH).toFixed(1)+' h':'';
+  const r=fph();
+  const timeTxt=(MED.kind==='illustration'&&r)?' · '+(frameNo/r).toFixed(1)+' h':'';
   $('pos').innerHTML=`<span class="pill">frame ${frameNo}${timeTxt}${extra||''}</span>`+badges();
 }
 
@@ -676,10 +702,82 @@ function save(){
   all.push(r);
   store(all);
   refreshCounts();buildQueue();
-  toast('✓ saved · '+all.length+' label(s) in this browser');
+  writeToFile();
+  toast('✓ saved · '+all.length+' label(s)'
+        +(FILE_HANDLE?' · written to your file':' in this browser'));
 }
 
 /* ------------------------------------------------------------------ export -- */
+/* ---------------------------------------------------------------------------
+   Writing straight to disk.  The File System Access API lets the page keep a
+   handle on a file and rewrite it, so a label survives a cleared browser
+   profile.  Only Chromium browsers offer it; the rest fall back to a download,
+   and localStorage remains the automatic store either way.
+   --------------------------------------------------------------------------- */
+let FILE_HANDLE=null;
+
+function labelsBody(){
+  return load().map(r=>JSON.stringify(r)).join('\n')+'\n';
+}
+
+async function pickSaveFile(){
+  if(!window.showSaveFilePicker){
+    toast('this browser cannot write files directly — use Export JSONL instead');
+    return;
+  }
+  try{
+    FILE_HANDLE=await window.showSaveFilePicker({
+      suggestedName:'labels.jsonl',
+      types:[{description:'JSON Lines',accept:{'application/jsonl':['.jsonl']}}]
+    });
+    await writeToFile();
+    toast('labels will now be saved to that file');
+    renderFileState();
+  }catch(e){
+    if(e.name!=='AbortError')toast('could not open the file: '+e.message,true);
+  }
+}
+
+async function writeToFile(){
+  if(!FILE_HANDLE)return false;
+  try{
+    const w=await FILE_HANDLE.createWritable();
+    await w.write(labelsBody());
+    await w.close();
+    renderFileState();
+    return true;
+  }catch(e){
+    toast('write failed: '+e.message,true);
+    FILE_HANDLE=null;renderFileState();
+    return false;
+  }
+}
+
+function renderFileState(){
+  const b=document.getElementById('fileBtn');
+  if(!b)return;
+  b.textContent=FILE_HANDLE?'Saving to file ✓':'Save to file';
+  b.style.borderColor=FILE_HANDLE?'#0f766e':'';
+  b.style.color=FILE_HANDLE?'#0f766e':'';
+}
+
+function setInterval2(v){
+  const n=parseFloat(v);
+  if(!(n>0)||n>1440){toast('interval must be between 0.5 and 1440 minutes',true);return}
+  INTERVAL=n;
+  try{localStorage.setItem('ivf-interval',String(n))}catch(e){}
+  syncInterval();
+  if(FRAMES.length)goto(IDX);
+  toast('frame interval set to '+n+' min ('+(60/n).toFixed(1)+' frames/hour)');
+}
+
+function syncInterval(){
+  const el=document.getElementById('interval');
+  if(el)el.value=INTERVAL;
+  const vn=document.getElementById('videoN');
+  if(vn)vn.value=localStorage.getItem('ivf-videon')||'48';
+}
+
 function exportJsonl(){
   const all=load();
   if(!all.length){toast('nothing saved yet');return}
@@ -707,7 +805,7 @@ function importJsonl(ev){
     let kept=0, skipped=0;
     rows.forEach(r=>{ if(r&&r.task_id){ byTask[r.task_id]=r; kept++ } else skipped++ });
     store(Object.values(byTask));
-    refreshCounts();renderSaved();buildQueue();
+    refreshCounts();renderSaved();buildQueue();writeToFile();
     toast('imported '+kept+' record(s)'+(skipped?', skipped '+skipped+' without task_id':''));
   };
   rd.readAsText(f);
@@ -733,7 +831,7 @@ function renderSaved(){
 }
 function delSaved(i){
   const all=load();all.splice(i,1);store(all);
-  refreshCounts();renderSaved();buildQueue();
+  refreshCounts();renderSaved();buildQueue();writeToFile();
 }
 
 /* ------------------------------------------------------------------- keys -- */
