@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IVF embryo labelling workbench</title>
+<style>
+:root{--ink:#12263a;--dim:#5b7185;--brand:#0f766e;--bg:#f4f7fa;--line:#d6e2ea;--warn:#b45309;--danger:#b3122e}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;gap:12px;align-items:center;padding:9px 16px;background:#fff;
+       border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header h1{font-size:15px;margin:0;font-weight:700;letter-spacing:.2px}
+.tabs{display:flex;gap:4px}
+.tabs button{border:1px solid transparent;background:none;padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--bg);border-color:var(--line);font-weight:600}
+select,input,textarea,button{font:inherit;color:inherit}
+select,input[type=text],input[type=number],textarea{border:1px solid var(--line);border-radius:6px;
+       padding:5px 8px;background:#fff;width:100%}
+button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--brand)}
+button.primary{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600}
+button.primary:hover{filter:brightness(1.08)}
+button.danger{color:var(--danger);border-color:#f0c2cc}
+button.tiny{padding:2px 8px;font-size:12px}
+.badge{font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600;white-space:nowrap}
+.b-illu{background:#fde8d3;color:var(--warn)}
+.b-own{background:#dbeafe;color:#1d4ed8}
+.b-todo{background:#eef3f7;color:#41586e}
+main{padding:12px;max-width:1900px;margin:0 auto}
+.grid{display:grid;grid-template-columns:300px 1fr 360px;gap:12px;align-items:start}
+@media(max-width:1250px){.grid{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px}
+.card h3{margin:0 0 8px;font-size:12px;color:var(--dim);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.queue{display:flex;flex-direction:column;gap:5px;max-height:70vh;overflow:auto}
+.item{border:1px solid var(--line);border-radius:7px;padding:7px 9px;cursor:pointer;font-size:13px}
+.item:hover{border-color:var(--brand)}
+.item.on{border-color:var(--brand);box-shadow:inset 0 0 0 2px #d6f0ec}
+.item.done{opacity:.55}
+.item .r1{display:flex;justify-content:space-between;gap:6px;align-items:center}
+.item .sub{font-size:11px;color:var(--dim);margin-top:2px}
+.duo{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.duo>div{flex:1 1 280px;min-width:260px}
+canvas{max-width:100%;height:auto;border-radius:6px;cursor:crosshair;background:#eef3f7;display:block}
+video{width:100%;border-radius:6px;background:#000}
+.controls{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.controls input[type=range]{flex:1;min-width:110px;padding:0}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.chips button{padding:2px 8px;font-size:12px}
+.row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:7px}
+.row label{font-size:12px;color:var(--dim)}
+.row.wide{grid-template-columns:1fr}
+textarea{resize:vertical;min-height:54px}
+.hint{font-size:11px;color:var(--dim)}
+.boxlist div{display:flex;justify-content:space-between;background:#fff5f7;border:1px solid #f5c2cd;
+             border-radius:5px;padding:3px 7px;font-size:12px;margin-bottom:3px}
+.boxlist button{border:none;background:none;color:var(--danger);padding:0 4px;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:600;font-size:12px}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--ink);color:#fff;padding:9px 16px;
+       border-radius:8px;opacity:0;transition:opacity .2s;z-index:9;max-width:360px}
+.toast.on{opacity:1}
+pre{background:#0d1b2a;color:#dbe9f4;padding:12px;border-radius:8px;overflow:auto;font-size:12px;line-height:1.5}
+kbd{background:#eef3f7;border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px}
+.pill{display:inline-block;background:#eef3f7;border:1px solid var(--line);border-radius:99px;
+      padding:1px 8px;font-size:11px;color:var(--dim);margin-right:4px}
+.filebar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>IVF embryo labelling workbench</h1>
+  <div class="tabs">
+    <button id="t-annot" class="on" onclick="tab('annot')">Annotate</button>
+    <button id="t-saved" onclick="tab('saved')">Saved <span id="savedN" class="pill">0</span></button>
+    <button id="t-schema" onclick="tab('schema')">Schema</button>
+  </div>
+  <span style="flex:1"></span>
+  <span class="hint">keys: <kbd>&larr;</kbd><kbd>&rarr;</kbd> frame · <kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel box</span>
+  <button onclick="exportJsonl()">Export JSONL</button>
+</header>
+
+<main>
+<!-- ============================================================ annotate -->
+<section id="p-annot">
+<div class="grid">
+
+  <div class="card">
+    <h3>Tasks</h3>
+    <div class="filebar">
+      <button class="tiny" onclick="pickFiles()">Load my frames</button>
+      <button class="tiny" onclick="pickVideo()">Load my video</button>
+      <button class="tiny" onclick="loadSample()">Sample</button>
+    </div>
+    <input type="file" id="fFiles" accept="image/*" multiple hidden onchange="onFiles(event)">
+    <input type="file" id="fVideo" accept="video/*" hidden onchange="onVideo(event)">
+    <div class="queue" id="queue"></div>
+    <p class="hint" style="margin:8px 0 0">Pick a task, then annotate on the still frame.
+      Everything is stored in this browser only; export to keep it.</p>
+  </div>
+
+  <div class="card">
+    <h3 id="taskTitle">no task selected</h3>
+    <div class="duo">
+      <div id="videoWrap" style="display:none">
+        <video id="vid" controls preload="metadata" onloadedmetadata="onMeta()"></video>
+        <div class="controls">
+          <button class="tiny" onclick="freeze()">Freeze this moment</button>
+          <span class="hint" id="vtime"></span>
+        </div>
+      </div>
+      <div>
+        <canvas id="cv" width="420" height="420"></canvas>
+        <div class="hint" style="margin-top:4px">drag on the image to draw a box</div>
+      </div>
+    </div>
+    <div class="controls">
+      <button onclick="step(-1)">&#9664;</button>
+      <input type="range" id="slider" min="0" max="0" value="0" oninput="goto(+this.value)">
+      <button onclick="step(1)">&#9654;</button>
+      <input type="number" id="jump" style="width:82px" placeholder="frame" onchange="jumpTo(+this.value)">
+    </div>
+    <div class="hint" id="pos" style="margin:4px 0"></div>
+    <div class="chips" id="phaseBtns"></div>
+  </div>
+
+  <div class="card">
+    <h3>Answer</h3>
+    <div class="row"><label>qtype</label>
+      <select id="qtype" onchange="fillQ()"></select></div>
+    <div class="row wide"><label>question</label><input id="question" type="text"></div>
+    <div class="row"><label>answer</label><input id="answer" type="text"></div>
+    <div class="row"><label>type</label>
+      <select id="answer_type" onchange="syncChoices()">
+        <option>closed</option><option>numeric</option><option>binary</option><option>open</option>
+      </select></div>
+    <div class="row"><label>choices</label><input id="choices" type="text" placeholder="yes|no"></div>
+    <div class="row wide"><label>rationale</label>
+      <textarea id="rationale" placeholder="what is visible that makes this the answer"></textarea></div>
+    <div class="row"><label>basis</label>
+      <select id="rationale_basis"><option>image</option><option>label</option></select></div>
+    <div class="row"><label>answerable</label>
+      <select id="answerable_from"><option>image</option><option>clinical_only</option><option>outcome_only</option></select></div>
+    <div class="row"><label>include pgt</label>
+      <select id="include_pgt"><option>FALSE</option><option>TRUE</option></select></div>
+    <div class="row wide"><label class="hint">boxes</label>
+      <div class="boxlist" id="boxlist"></div></div>
+    <div class="row wide"><label>notes</label><input id="notes" type="text"></div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="primary" style="flex:1" onclick="save()">Save this label</button>
+      <button onclick="clearForm()">Clear</button>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<!-- =============================================================== saved -->
+<section id="p-saved" style="display:none">
+  <div class="card">
+    <h3>Saved in this browser <span id="savedN2" class="pill">0</span></h3>
+    <div class="filebar">
+      <button class="primary" onclick="exportJsonl()">Download JSONL</button>
+      <button onclick="document.getElementById('fImport').click()">Import JSONL</button>
+      <input type="file" id="fImport" accept=".jsonl,.json,text/plain" hidden onchange="importJsonl(event)">
+      <button class="danger" onclick="clearAll()">Delete everything</button>
+    </div>
+    <table><thead><tr><th>task</th><th>video</th><th>frame</th><th>qtype</th>
+      <th>answer</th><th>boxes</th><th></th></tr></thead>
+      <tbody id="savedBody"></tbody></table>
+    <p class="hint">Data lives in this browser's localStorage. Export before clearing the
+      browser cache, or after finishing a session.</p>
+  </div>
+</section>
+
+<!-- ============================================================== schema -->
+<section id="p-schema" style="display:none">
+  <div class="card">
+    <h3>One record</h3>
+<pre>{
+  "id": "CLINIC_0001__cs#v1",
+  "task_id": "CLINIC_0001__cs",
+  "video_id": "CLINIC_0001",
+  "kind": "cs",
+  "qtype": "cs_present",
+  "question": "Is a cytoplasmic string visible in this frame?",
+  "answer": "yes",
+  "answer_type": "closed",
+  "choices": "yes|no",
+  "rationale": "A thin filament bridges the ICM and the mural TE inside the box.",
+  "rationale_basis": "image",
+  "answerable_from": "image",
+  "include_pgt": "FALSE",
+  "frame_index": 440,
+  "boxes": "180,95,240,310",
+  "box_labels": "cytoplasmic_string",
+  "notes": "",
+  "source": "illustration",
+  "saved": "2025-03-10T14:02:11"
+}</pre>
+    <h3 style="margin-top:14px">Field notes</h3>
+    <table><tbody>
+      <tr><td><code>answerable_from</code></td><td><b>image</b> = visible in the frame ·
+        <b>clinical_only</b> = needs the record · <b>outcome_only</b> = a follow-up fact,
+        never score it as image QA</td></tr>
+      <tr><td><code>rationale_basis</code></td><td><b>image</b> = describes visible features ·
+        <b>label</b> = merely cites the annotation file (bookkeeping, weaker supervision)</td></tr>
+      <tr><td><code>boxes</code></td><td><code>x1,y1,x2,y2</code> in the <b>original</b> image
+        pixels, several boxes separated by <code>;</code></td></tr>
+      <tr><td><code>include_pgt</code></td><td><b>FALSE</b> = group A (no ploidy, matches the
+        non-invasive claim) · <b>TRUE</b> = group B (realistic clinical setting)</td></tr>
+      <tr><td><code>source</code></td><td><b>illustration</b> = AI-generated demo frames,
+        <b>own</b> = frames you loaded, never mix them in one training run</td></tr>
+    </tbody></table>
+    <p class="hint" style="margin-top:12px">The sample frames are AI-generated illustrations,
+      not patient data, and are not for training. See NOTICE.md in the repository.</p>
+  </div>
+</section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------- catalogue -- */
+const QTPL={
+ stage:"What developmental stage is shown?",
+ timing:"At what hour did the embryo reach the {stage} stage?",
+ blastocyst:"Has the embryo formed a blastocoel yet?",
+ cell_count:"How many blastomeres are visible?",
+ cs_present:"Is a cytoplasmic string visible in this frame?",
+ cs_count:"How many cytoplasmic strings are visible?",
+ cs_interval:"Between which frames is a cytoplasmic string visible?",
+ expansion:"What is the expansion grade?",
+ icm:"How would you grade the inner cell mass?",
+ te:"How would you grade the trophectoderm?",
+ abnormal_cleavage:"Is there any abnormal cleavage (direct, reverse, chaotic)?",
+ fragmentation:"What fraction of the embryo is fragmented?",
+ zona:"Is the zona pellucida thinning?",
+ keyframe:"Is this a key frame for judging viability?",
+ description:"Describe the morphology of this embryo.",
+ live_birth:"What is the probability of live birth for this transfer?"
+};
+const QTYPES=Object.keys(QTPL);
+const CHOICES={blastocyst:"yes|no",cs_present:"yes|no",abnormal_cleavage:"yes|no",
+ zona:"yes|no",keyframe:"yes|no",live_birth:"0|1",expansion:"0|1|2|3|4|5",
+ icm:"A|B|C|D",te:"A|B|C|D",stage:"zygote|2-cell|4-cell|8-cell|morula|blastocyst"};
+
+const KINDS={
+ describe:  {title:"Describe the whole clip",           qtype:"description"},
+ grade:     {title:"Grade the blastocyst (EXP/ICM/TE)", qtype:"expansion"},
+ events:    {title:"Confirm the key event frames",      qtype:"timing"},
+ cs:        {title:"Cytoplasmic string: present, where",qtype:"cs_present"},
+ cs_span:   {title:"Cytoplasmic string: which frames",  qtype:"cs_interval"},
+ cleavage:  {title:"Any abnormal cleavage",             qtype:"abnormal_cleavage"},
+ keyframe:  {title:"Pick the decisive frame",           qtype:"keyframe"}
+};
+const GUIDE={
+ describe:"Watch the whole clip, then describe the course: which stages appear, when compaction starts, how the blastocoel forms.",
+ grade:"Find the frame you would grade from, then record expansion 0-5, ICM A-D and TE A-D.",
+ events:"Step through and record the frame where each event starts: tPB2, tPNf, t2, t4, t8, tM, tSB, tB.",
+ cs:"Scan the expanded-blastocyst window. If a thin filament bridges the ICM and the mural TE, draw one box. If none, answer no and leave the boxes empty.",
+ cs_span:"Write the first and the last frame in which a string is visible, as first-last.",
+ cleavage:"Replay the divisions. Note direct (1→3), reverse or chaotic cleavage, and the clearest frame.",
+ keyframe:"Pick the single frame you would show a colleague to justify your viability call, then say what makes it decisive."
+};
+
+/* the sample clip: frames named <frame><label>.jpg in docs/assets/frames/ */
+const SAMPLE={
+  video_id:"CLINIC_0001", patient_id:"P0042", cycle_id:"C0042", embryo_id:"E1",
+  n_frames:500, interval_min:15, insemination:"2025-03-02T09:30:00",
+  video:"assets/media/timelapse_CLINIC_0001.mp4",
+  dir:"assets/frames/CLINIC_0001/",
+  files:["00000_start","00014_tPB2","00036_tPNa","00094_tPNf","00106_t2","00146_t3",
+         "00152_t4","00196_t5","00226_t8","00340_tM","00392_tSB","00424_tB",
+         "00440_cs","00441_cs","00464_tEB","00470_grade4AA"]
+};
+
+let FRAMES=[],IDX=0,BOXES=[],DRAG=null,img=null,scale=1;
+let MED={kind:"none",video:false},TASK=null;
+const FPH=60/SAMPLE.interval_min;
+
+/* ---------------------------------------------------------------- storage -- */
+const KEY='ivf-labels-v1';
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]') }catch(e){ return [] } }
+function store(a){ try{ localStorage.setItem(KEY,JSON.stringify(a)) }catch(e){ toast('storage full') } }
+function savedCount(){ return load().length }
+
+/* ----------------------------------------------------------------- helpers -- */
+const $=id=>document.getElementById(id);
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2000)}
+function tab(n){
+  ['annot','saved','schema'].forEach(t=>{
+    $('p-'+t).style.display=(t===n?'':'none');
+    $('t-'+t).classList.toggle('on',t===n);
+  });
+  if(n==='saved')renderSaved();
+}
+
+/* -------------------------------------------------------------------- boot -- */
+function boot(){
+  $('qtype').innerHTML=QTYPES.map(q=>`<option>${q}</option>`).join('');
+  loadSample();
+  refreshCounts();
+  drawEmpty('click "Sample" to load the demo clip');
+  // deep link: ?task=cs opens that task kind straight away
+  const want=new URLSearchParams(location.search).get('task');
+  if(want&&KINDS[want]) openTask((SAMPLE.video_id)+'__'+want,want,KINDS[want].title);
+}
+
+function refreshCounts(){
+  const n=savedCount();
+  $('savedN').textContent=n; $('savedN2').textContent=n;
+}
+
+/* --------------------------------------------------------------- materials -- */
+function loadSample(){
+  MED={kind:'illustration',video:true,videoSrc:SAMPLE.video};
+  FRAMES=SAMPLE.files.map(name=>{
+    const m=name.match(/^(\d+)_?(.*)$/);
+    return {frame_no:parseInt(m[1],10),label:m[2]||'',src:SAMPLE.dir+name+'.jpg'};
+  }).sort((a,b)=>a.frame_no-b.frame_no);
+  TASK=null; BOXES=[];
+  buildQueue();
+  $('taskTitle').textContent='no task selected';
+  $('pos').innerHTML='<span class="badge b-illu">illustration · not patient data</span> '+FRAMES.length+' frames loaded';
+  renderPhases();
+  drawEmpty('pick a task on the left');
+  toast('sample clip loaded');
+}
+
+function pickFiles(){ $('fFiles').click() }
+function pickVideo(){ $('fVideo').click() }
+
+function onFiles(ev){
+  const files=[...ev.target.files];
+  if(!files.length) return;
+  FRAMES=files.map((f,i)=>({frame_no:i,label:'',src:URL.createObjectURL(f)}));
+  MED={kind:'own',video:false};
+  TASK=null;BOXES=[];
+  $('videoWrap').style.display='none';
+  buildQueue(); renderPhases();
+  $('slider').max=FRAMES.length-1;
+  $('pos').innerHTML='<span class="badge b-own">my frames</span> '+FRAMES.length+' images';
+  goto(0); toast(FRAMES.length+' frames loaded');
+}
+
+async function onVideo(ev){
+  const f=ev.target.files[0];
+  if(!f) return;
+  const url=URL.createObjectURL(f);
+  const v=document.createElement('video');
+  v.src=url; v.muted=true;
+  await new Promise(r=>{v.onloadedmetadata=r});
+  const N=24, dur=v.duration;
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  const cx=c.getContext('2d');
+  const out=[];
+  for(let i=0;i<N;i++){
+    v.currentTime=dur*i/(N-1);
+    await new Promise(r=>{v.onseeked=r});
+    cx.drawImage(v,0,0);
+    out.push({frame_no:Math.round(i*(500-1)/(N-1)),label:'',
+              src:c.toDataURL('image/jpeg',0.8)});
+  }
+  FRAMES=out; MED={kind:'own',video:true,videoSrc:url};
+  TASK=null;BOXES=[];
+  $('videoWrap').style.display='';
+  $('vid').src=url;
+  buildQueue(); renderPhases();
+  $('slider').max=FRAMES.length-1;
+  $('pos').innerHTML='<span class="badge b-own">my video</span> '+N+' frames extracted';
+  goto(0); toast('extracted '+N+' frames from the clip');
+}
+
+/* ------------------------------------------------------------------- queue -- */
+function buildQueue(){
+  const done=new Set(load().map(r=>r.task_id));
+  const q=$('queue');
+  const items=Object.entries(KINDS).map(([kind,k])=>({
+    id:(MED.kind==='none'?'VIDEO':(MED.video_id||'MYVIDEO'))+'__'+kind,
+    kind,title:k.title
+  }));
+  q.innerHTML=items.map(t=>`
+    <div class="item ${TASK&&TASK.id===t.id?'on':''} ${done.has(t.id)?'done':''}"
+         onclick="openTask('${t.id}','${t.kind}','${t.title.replace(/'/g,'')}')">
+      <div class="r1"><span>${t.title}</span>
+        <span class="badge ${done.has(t.id)?'b-own':'b-todo'}">${done.has(t.id)?'saved':'todo'}</span></div>
+      <div class="sub">${t.kind}${done.has(t.id)?' · already saved':''}</div>
+    </div>`).join('');
+}
+
+function openTask(id,kind,title){
+  TASK={id:id.replace(/[^A-Za-z0-9_]/g,''),kind,title};
+  buildQueue();
+  $('taskTitle').textContent=title;
+  $('qtype').value=KINDS[kind].qtype;
+  fillQ(true);
+  // guidance replaces pre-labelling: show what to look for, never the answer
+  $('pos').innerHTML='<span class="pill">guidance</span> '+GUIDE[kind];
+  BOXES=[];renderBoxes();
+  ['answer','rationale','notes'].forEach(k=>$(k).value='');
+  if(MED.video&&MED.videoSrc){$('videoWrap').style.display='';const v=$('vid');
+    if(v.dataset.k!==MED.videoSrc){v.dataset.k=MED.videoSrc;v.src=MED.videoSrc}}
+  else $('videoWrap').style.display='none';
+  if(FRAMES.length)goto(0);
+}
+
+function renderPhases(){
+  const el=$('phaseBtns');
+  if(MED.kind!=='illustration'){el.innerHTML='';return}
+  el.innerHTML=FRAMES.filter(f=>f.label&&f.label!=='start'&&f.label!=='grade4AA')
+    .map(f=>`<button onclick="jumpTo(${f.frame_no})">${f.label} ${f.frame_no}</button>`).join('');
+}
+
+/* ------------------------------------------------------------------ viewer -- */
+function onMeta(){const v=$('vid');if(v.duration)$('vtime').textContent=v.duration.toFixed(1)+' s clip'}
+function freeze(){
+  const v=$('vid');
+  if(!MED.video||!v.duration){toast('no clip');return}
+  const n=FRAMES.length?FRAMES[FRAMES.length-1].frame_no+1:500;
+  jumpTo(Math.round(v.currentTime/v.duration*(n-1)));
+}
+function goto(i){
+  if(!FRAMES.length){drawEmpty('no frames');return}
+  IDX=Math.max(0,Math.min(FRAMES.length-1,i));
+  $('slider').max=FRAMES.length-1;$('slider').value=IDX;
+  const f=FRAMES[IDX];
+  img=new Image();
+  img.onload=()=>{
+    scale=f.src.startsWith('data:')||img.width<=520?1:Math.min(1,520/img.width);
+    $('cv').width=img.width;$('cv').height=img.height;
+    redraw();
+  };
+  img.onerror=()=>drawEmpty('image failed to load');
+  img.src=f.src;
+  $('jump').value=f.frame_no;
+  const h=(f.frame_no/FPH).toFixed(1);
+  $('pos').innerHTML=`<span class="pill">frame ${f.frame_no} · ${h} h · ${IDX+1}/${FRAMES.length}</span>`
+    +(MED.kind==='illustration'?'<span class="badge b-illu">illustration</span>':''
+      +(MED.kind==='own'?'<span class="badge b-own">my frames</span>':''));
+}
+function step(d){goto(IDX+d)}
+function jumpTo(fn){let b=0,bd=1e9;FRAMES.forEach((f,i)=>{const dd=Math.abs(f.frame_no-fn);
+  if(dd<bd){bd=dd;b=i}});goto(b)}
+
+function drawEmpty(msg){
+  const c=$('cv'),x=c.getContext('2d');
+  x.fillStyle='#eef3f7';x.fillRect(0,0,c.width,c.height);
+  x.fillStyle='#8aa0b4';x.font='15px Segoe UI';x.textAlign='center';
+  x.fillText(msg||'no frames',c.width/2,c.height/2);
+}
+function redraw(){
+  const c=$('cv'),x=c.getContext('2d');
+  x.clearRect(0,0,c.width,c.height);
+  if(img){
+    const s=scale||1;
+    x.drawImage(img,0,0,img.width*s,img.height*s);
+  }
+  x.lineWidth=2;
+  BOXES.forEach((b,i)=>{
+    const s=scale||1;
+    x.strokeStyle='#e11d48';
+    x.strokeRect(b[0]*s,b[1]*s,(b[2]-b[0])*s,(b[3]-b[1])*s);
+    x.fillStyle='#e11d48';x.font='12px Segoe UI';x.textAlign='left';
+    x.fillText('#'+(i+1),b[0]*s+2,Math.max(12,b[1]*s-3));
+  });
+  if(DRAG){
+    x.setLineDash([4,3]);x.strokeStyle='#0f766e';
+    x.strokeRect(Math.min(DRAG.x0,DRAG.x1),Math.min(DRAG.y0,DRAG.y1),
+                 Math.abs(DRAG.x1-DRAG.x0),Math.abs(DRAG.y1-DRAG.y0));
+    x.setLineDash([]);
+  }
+}
+function toImg(e){
+  const c=$('cv'),r=c.getBoundingClientRect();
+  const s=scale||1;
+  return [ (e.clientX-r.left)*(c.width/r.width)/s,
+           (e.clientY-r.top)*(c.height/r.height)/s ];
+}
+
+$('cv').addEventListener('mousedown',e=>{
+  if(!img)return;
+  const [x,y]=toImg(e);DRAG={x0:x,y0:y,x1:x,y1:y};
+});
+window.addEventListener('mousemove',e=>{
+  if(!DRAG)return;
+  const [x,y]=toImg(e);DRAG.x1=x;DRAG.y1=y;redraw();
+});
+window.addEventListener('mouseup',()=>{
+  if(!DRAG)return;
+  const{x0,y0,x1,y1}=DRAG;
+  const b=[Math.round(Math.min(x0,x1)),Math.round(Math.min(y0,y1)),
+           Math.round(Math.max(x0,x1)),Math.round(Math.max(y0,y1))];
+  DRAG=null;
+  if(b[2]-b[0]>3&&b[3]-b[1]>3){BOXES.push(b);renderBoxes()}
+  redraw();
+});
+
+function renderBoxes(){
+  const el=$('boxlist');
+  if(!BOXES.length){el.innerHTML='<span class="hint">none yet — drag on the image</span>';return}
+  el.innerHTML=BOXES.map((b,i)=>
+    `<div><span>#${i+1} &nbsp;${b.join(',')}</span>
+      <button onclick="delBox(${i})">&#10005;</button></div>`).join('');
+}
+function delBox(i){BOXES.splice(i,1);renderBoxes();redraw()}
+
+/* -------------------------------------------------------------------- form -- */
+function fillQ(reset){
+  if(reset===undefined)reset=true;
+  const q=$('qtype').value;
+  if(reset)$('question').value=QTPL[q]||'';
+  const ch=CHOICES[q];
+  $('choices').value=ch||'';
+  $('answer_type').value=ch?(q==='live_birth'?'binary':'closed'):(q==='timing'?'numeric':'open');
+  syncChoices();
+}
+function syncChoices(){
+  const at=$('answer_type').value;
+  $('choices').disabled=!(at==='closed'||at==='binary');
+}
+function clearForm(){
+  BOXES=[];renderBoxes();redraw();
+  ['answer','rationale','notes'].forEach(k=>$(k).value='');
+  fillQ(true);
+}
+
+function buildRecord(){
+  const f=FRAMES[IDX]||{};
+  const n=savedCount()+1;
+  const taskId=TASK?TASK.id:('UNSET__task');
+  return {
+    id:taskId+'#v'+n,
+    task_id:taskId,
+    video_id:(MED.video_id||(MED.kind==='illustration'?SAMPLE.video_id:'MYVIDEO')),
+    kind:TASK?TASK.kind:'',
+    qtype:$('qtype').value,
+    question:$('question').value.trim(),
+    answer:$('answer').value.trim(),
+    answer_type:$('answer_type').value,
+    choices:$('choices').value,
+    rationale:$('rationale').value.trim(),
+    rationale_basis:$('rationale_basis').value,
+    answerable_from:$('answerable_from').value,
+    include_pgt:$('include_pgt').value,
+    frame_index:(f.frame_no!==undefined?f.frame_no:null),
+    boxes:BOXES.map(b=>b.join(',')).join(';'),
+    box_labels:BOXES.length?'cytoplasmic_string':'',
+    notes:$('notes').value.trim(),
+    source:(MED.kind==='illustration'?'illustration':'own'),
+    saved:new Date().toISOString().slice(0,19)
+  };
+}
+
+function validate(r){
+  if(!TASK) return 'pick a task first';
+  if(!r.question) return 'question is empty';
+  if(!r.answer) return 'answer is empty';
+  if(r.answer_type==='closed'||r.answer_type==='binary'){
+    const ch=r.choices.split('|').filter(Boolean);
+    if(!ch.length) return 'a closed answer needs choices';
+    if(!ch.includes(r.answer)) return `answer "${r.answer}" not in ${r.choices}`;
+  }
+  if(r.answer_type==='numeric'&&isNaN(parseFloat(r.answer)))
+    return 'numeric answer is not a number';
+  return null;
+}
+
+function save(){
+  const r=buildRecord();
+  const err=validate(r);
+  if(err){toast('✗ '+err);return}
+  // same task twice replaces the earlier version instead of piling up
+  const all=load().filter(x=>x.task_id!==r.task_id);
+  all.push(r);
+  store(all);
+  refreshCounts();buildQueue();
+  toast('✓ saved · '+all.length+' label(s) in this browser');
+}
+
+/* ------------------------------------------------------------------ export -- */
+function exportJsonl(){
+  const all=load();
+  if(!all.length){toast('nothing saved yet');return}
+  const body=all.map(r=>JSON.stringify(r)).join('\n')+'\n';
+  const blob=new Blob([body],{type:'application/jsonl'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='annotations.jsonl';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('exported '+all.length+' record(s)');
+}
+
+function importJsonl(ev){
+  const f=ev.target.files[0];
+  if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const rows=rd.result.split('\n').filter(l=>l.trim()).map(l=>{
+      try{return JSON.parse(l)}catch(e){return null}
+    }).filter(Boolean);
+    if(!rows.length){toast('no valid JSONL lines');return}
+    const byTask={};
+    load().forEach(r=>byTask[r.task_id]=r);
+    rows.forEach(r=>{if(r.task_id)byTask[r.task_id]=r});
+    store(Object.values(byTask));
+    refreshCounts();renderSaved();buildQueue();
+    toast('imported '+rows.length+' record(s)');
+  };
+  rd.readAsText(f);
+}
+
+function clearAll(){
+  if(!confirm('Delete every saved label in this browser? Export first if unsure.'))return;
+  localStorage.removeItem(KEY);
+  refreshCounts();renderSaved();buildQueue();
+  toast('cleared');
+}
+
+/* ------------------------------------------------------------------- saved -- */
+function renderSaved(){
+  const all=load();
+  $('savedBody').innerHTML=all.length?all.map((r,i)=>`
+    <tr><td>${r.kind||''}</td><td>${r.video_id||''}</td>
+      <td>${r.frame_index??'—'}</td><td>${r.qtype||''}</td>
+      <td>${String(r.answer||'').slice(0,40)}</td>
+      <td>${r.boxes?r.boxes.split(';').length:0}</td>
+      <td><button class="tiny danger" onclick="delSaved(${i})">✕</button></td></tr>`).join('')
+    :'<tr><td colspan="7" class="hint">nothing saved yet</td></tr>';
+}
+function delSaved(i){
+  const all=load();all.splice(i,1);store(all);
+  refreshCounts();renderSaved();buildQueue();
+}
+
+/* ------------------------------------------------------------------- keys -- */
+document.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+  if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}
+  if(e.key==='ArrowRight'){e.preventDefault();step(1)}
+  if(e.key==='Enter'){e.preventDefault();save()}
+  if(e.key==='Escape'){DRAG=null;redraw()}
+});
+
+boot();
+</script>
+</body>
+</html>

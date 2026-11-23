@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IVF-Labeling annotation record",
+  "description": "One line of annotations.jsonl. Produced by docs/index.html and by server/label_tool.py.",
+  "type": "object",
+  "required": ["id", "task_id", "video_id", "qtype", "question", "answer",
+               "answer_type", "rationale", "answerable_from"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "unique per record; <task_id>#v<version>"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "the queue item this answers, e.g. CLINIC_0001__cs"
+    },
+    "video_id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["describe", "grade", "events", "cs", "cs_span", "cleavage", "keyframe", ""],
+      "description": "which task family this came from"
+    },
+    "qtype": {
+      "type": "string",
+      "enum": ["stage", "timing", "blastocyst", "cell_count", "cs_present",
+               "cs_count", "cs_interval", "expansion", "icm", "te",
+               "abnormal_cleavage", "fragmentation", "zona", "keyframe",
+               "description", "live_birth"]
+    },
+    "question": { "type": "string", "minLength": 1 },
+    "answer": { "type": "string", "minLength": 1 },
+    "answer_type": {
+      "type": "string",
+      "enum": ["closed", "numeric", "binary", "open"]
+    },
+    "choices": {
+      "type": "string",
+      "description": "pipe separated allowed answers; required for closed and binary"
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "description": "why this is the answer, citing what is visible in the frame"
+    },
+    "rationale_basis": {
+      "type": "string",
+      "enum": ["image", "label"],
+      "description": "image = describes visible features; label = merely cites the annotation file"
+    },
+    "answerable_from": {
+      "type": "string",
+      "enum": ["image", "clinical_only", "outcome_only"],
+      "description": "image = visible in the frame; clinical_only = needs the record; outcome_only = a follow-up fact, never an image prediction"
+    },
+    "include_pgt": {
+      "type": "string",
+      "enum": ["FALSE", "TRUE"],
+      "description": "FALSE = non-invasive setting (group A); TRUE = ploidy known (group B)"
+    },
+    "frame_index": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "frame the answer refers to; null for clip-level answers"
+    },
+    "boxes": {
+      "type": "string",
+      "description": "x1,y1,x2,y2 in ORIGINAL image pixels; several boxes separated by ';'"
+    },
+    "box_labels": {
+      "type": "string",
+      "description": "one label per box, pipe separated"
+    },
+    "notes": { "type": "string" },
+    "source": {
+      "type": "string",
+      "enum": ["illustration", "own"],
+      "description": "illustration = bundled AI demo frames (never train on them)"
+    },
+    "saved": { "type": "string", "description": "ISO timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "answer_type": { "enum": ["closed", "binary"] } } },
+      "then": {
+        "required": ["choices"],
+        "description": "a closed answer needs a choices list to be scorable"
+      }
+    }
+  ]
+}

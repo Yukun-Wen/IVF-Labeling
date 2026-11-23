@@ -1,0 +1,6 @@
+﻿__pycache__/
+*.pyc
+annotation/
+!annotation/.gitkeep
+.tmp/
+_preview*.png
