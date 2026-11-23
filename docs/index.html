@@ -359,14 +359,14 @@ async function onVideo(ev){
   const v=document.createElement('video');
   v.src=url; v.muted=true;
   await new Promise(r=>{v.onloadedmetadata=r});
+  if(!v.videoWidth){ toast('this browser could not decode that video'); return }
   const N=24, dur=v.duration;
   const c=document.createElement('canvas');
   c.width=v.videoWidth; c.height=v.videoHeight;
   const cx=c.getContext('2d');
   const out=[];
   for(let i=0;i<N;i++){
-    v.currentTime=dur*i/(N-1);
-    await new Promise(r=>{v.onseeked=r});
+    await seekTo(v,dur*i/(N-1));
     cx.drawImage(v,0,0);
     out.push({frame_no:Math.round(i*(500-1)/(N-1)),label:'',
               src:c.toDataURL('image/jpeg',0.8)});
@@ -422,6 +422,18 @@ function renderPhases(){
 }
 
 /* ------------------------------------------------------------------ viewer -- */
+/* 'seeked' never fires when the target time equals the current time, so a bare
+   await on it hangs (that broke the first frame of video extraction). */
+function seekTo(v,t){
+  return new Promise(resolve=>{
+    if(Math.abs((v.currentTime||0)-t)<0.02){ resolve(); return }
+    let done=false;
+    const fire=()=>{ if(done)return; done=true; v.removeEventListener('seeked',fire); resolve() };
+    v.addEventListener('seeked',fire);
+    try{ v.currentTime=t }catch(e){}
+    setTimeout(fire,1500);            // a stubborn seek must not hang the loop
+  });
+}
 /* CUR is the still actually on the canvas. It is not always FRAMES[IDX]: the
    demo clip ships 16 keyframes for a 23 s video, so freezing must capture the
    video pixel you are looking at rather than snap to the nearest keyframe. */
@@ -453,19 +465,25 @@ function nearestIndex(fn){
   return b;
 }
 
+let stillToken=0;
 function showStill(src,frameNo,extra){
+  const tok=++stillToken;            // ignore images that finish out of order
   CUR={src:src,frame_no:frameNo};
-  img=new Image();
-  img.onload=()=>{
-    scale=img.width>520?Math.min(1,520/img.width):1;
-    $('cv').width=img.width;$('cv').height=img.height;
+  const im=new Image();
+  im.onload=()=>{
+    if(tok!==stillToken) return;
+    img=im;
+    scale=im.width>520?Math.min(1,520/im.width):1;
+    $('cv').width=im.width;$('cv').height=im.height;
     redraw();
   };
-  img.onerror=()=>drawEmpty('image failed to load');
-  img.src=src;
+  im.onerror=()=>{ if(tok===stillToken) drawEmpty('image failed to load') };
+  im.src=src;
   $('jump').value=frameNo;
-  const h=(frameNo/FPH).toFixed(1);
-  $('pos').innerHTML=`<span class="pill">frame ${frameNo} · ${h} h${extra||''}</span>`+badges();
+  /* only the sample clip has a known acquisition interval; do not invent hours
+     for arbitrary uploaded frames */
+  const timeTxt=MED.kind==='illustration'?' · '+(frameNo/FPH).toFixed(1)+' h':'';
+  $('pos').innerHTML=`<span class="pill">frame ${frameNo}${timeTxt}${extra||''}</span>`+badges();
 }
 
 /* freeze exactly what is on screen: no snapping to the nearest keyframe */
@@ -599,10 +617,19 @@ function clearForm(){
   fillQ(true);
 }
 
+function nextVersion(taskId){
+  const prev=load().filter(x=>x.task_id===taskId);
+  const max=prev.reduce((m,x)=>{
+    const v=parseInt(String(x.id||'').split('#v')[1]||'0',10);
+    return Number.isFinite(v)?Math.max(m,v):m;
+  },0);
+  return max+1;
+}
+
 function buildRecord(){
   const f=FRAMES[IDX]||{};
-  const n=savedCount()+1;
   const taskId=TASK?TASK.id:('UNSET__task');
+  const n=nextVersion(taskId);
   return {
     id:taskId+'#v'+n,
     task_id:taskId,
@@ -677,10 +704,11 @@ function importJsonl(ev){
     if(!rows.length){toast('no valid JSONL lines');return}
     const byTask={};
     load().forEach(r=>byTask[r.task_id]=r);
-    rows.forEach(r=>{if(r.task_id)byTask[r.task_id]=r});
+    let kept=0, skipped=0;
+    rows.forEach(r=>{ if(r&&r.task_id){ byTask[r.task_id]=r; kept++ } else skipped++ });
     store(Object.values(byTask));
     refreshCounts();renderSaved();buildQueue();
-    toast('imported '+rows.length+' record(s)');
+    toast('imported '+kept+' record(s)'+(skipped?', skipped '+skipped+' without task_id':''));
   };
   rd.readAsText(f);
 }

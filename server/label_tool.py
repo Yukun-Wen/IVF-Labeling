@@ -33,6 +33,7 @@ Standard library only; binds to 127.0.0.1.
 """
 import argparse
 import csv
+import hashlib
 import json
 import re
 import threading
@@ -204,9 +205,23 @@ TASK_GUIDE = {
     'keyframe': 'Pick the single frame you would show a colleague to justify your viability '
                 'judgement, then say what makes it decisive.',
 }
+def queue_signature():
+    """A change here means the queue no longer matches the material."""
+    parts = []
+    for vid in sorted(MANIFEST):
+        med = media_of(vid)
+        parts.append(f'{vid}:{med["kind"]}:{len(med["frames"])}:'
+                     f'{1 if med["video"] else 0}')
+    for rel in ('labels/phases.csv', 'labels/cytoplasmic_strings.csv',
+                'labels/grades.csv', 'labels/captions.jsonl'):
+        p = ROOT / rel
+        parts.append(f'{rel}:{p.stat().st_mtime_ns if p.exists() else 0}')
+    return hashlib.md5('|'.join(parts).encode()).hexdigest()[:12]
+
+
 def build_tasks(force=False):
     if F_TASKS.exists() and not force:
-        return json.loads(F_TASKS.read_text(encoding='utf-8'))
+        return load_tasks()
     tasks = []
     for vid in MANIFEST:
         med = media_of(vid)
@@ -226,16 +241,44 @@ def build_tasks(force=False):
                 'status': 'todo', 'assignee': '',
                 'created': time.strftime('%Y-%m-%dT%H:%M:%S'),
             })
-    F_TASKS.write_text(json.dumps(tasks, indent=1, ensure_ascii=False), encoding='utf-8')
+    save_tasks(tasks)
     return tasks
 
 
 def load_tasks():
-    return build_tasks(False)
+    """Return the queue, rebuilding it when the material has changed.
+
+    Statuses and assignees of tasks that still exist are carried over, so adding
+    one video does not wipe the progress on the others.
+    """
+    sig = queue_signature()
+    old = []
+    if F_TASKS.exists():
+        try:
+            data = json.loads(F_TASKS.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError):
+            data = {}
+        if isinstance(data, dict):
+            if data.get('sig') == sig:
+                return data.get('tasks', [])
+            old = data.get('tasks', [])
+        elif isinstance(data, list):      # older plain-list format
+            old = data
+
+    fresh = build_tasks(force=True)
+    keep = {t['id']: t for t in old}
+    for t in fresh:
+        prev = keep.get(t['id'])
+        if prev:
+            t['status'] = prev.get('status', t['status'])
+            t['assignee'] = prev.get('assignee', '')
+    save_tasks(fresh)
+    return fresh
 
 
 def save_tasks(tasks):
-    F_TASKS.write_text(json.dumps(tasks, indent=1, ensure_ascii=False), encoding='utf-8')
+    F_TASKS.write_text(json.dumps({'sig': queue_signature(), 'tasks': tasks},
+                                  indent=1, ensure_ascii=False), encoding='utf-8')
 
 
 def audit(actor, action, task_id, detail=''):
