@@ -308,8 +308,11 @@ function boot(){
   refreshCounts();
   drawEmpty('click "Sample" to load the demo clip');
   // deep link: ?task=cs opens that task kind straight away
-  const want=new URLSearchParams(location.search).get('task');
+  const qs=new URLSearchParams(location.search);
+  const want=qs.get('task');
   if(want&&KINDS[want]) openTask((SAMPLE.video_id)+'__'+want,want,KINDS[want].title);
+  const at=qs.get('t');
+  if(at!==null&&!isNaN(parseFloat(at))) seekAndFreeze(parseFloat(at));
 }
 
 function refreshCounts(){
@@ -419,35 +422,100 @@ function renderPhases(){
 }
 
 /* ------------------------------------------------------------------ viewer -- */
+/* CUR is the still actually on the canvas. It is not always FRAMES[IDX]: the
+   demo clip ships 16 keyframes for a 23 s video, so freezing must capture the
+   video pixel you are looking at rather than snap to the nearest keyframe. */
+let CUR=null;
+
 function onMeta(){const v=$('vid');if(v.duration)$('vtime').textContent=v.duration.toFixed(1)+' s clip'}
+
+function badges(){
+  return MED.kind==='illustration'?'<span class="badge b-illu">illustration</span>'
+       : MED.kind==='own'?'<span class="badge b-own">my frames</span>':'';
+}
+
+/* the demo clip maps frame 0..N-1 onto 0..duration seconds */
+function frameToTime(f){
+  const v=$('vid');
+  if(!v.duration)return 0;
+  const n=(FRAMES.length?FRAMES[FRAMES.length-1].frame_no:499)+1;
+  return Math.min(v.duration-0.05,Math.max(0,(f/Math.max(n-1,1))*v.duration));
+}
+function timeToFrame(t){
+  const v=$('vid');
+  const n=(FRAMES.length?FRAMES[FRAMES.length-1].frame_no:499)+1;
+  if(!v.duration)return 0;
+  return Math.round(t/v.duration*(n-1));
+}
+function nearestIndex(fn){
+  let b=0,bd=1e9;
+  FRAMES.forEach((f,i)=>{const dd=Math.abs(f.frame_no-fn);if(dd<bd){bd=dd;b=i}});
+  return b;
+}
+
+function showStill(src,frameNo,extra){
+  CUR={src:src,frame_no:frameNo};
+  img=new Image();
+  img.onload=()=>{
+    scale=img.width>520?Math.min(1,520/img.width):1;
+    $('cv').width=img.width;$('cv').height=img.height;
+    redraw();
+  };
+  img.onerror=()=>drawEmpty('image failed to load');
+  img.src=src;
+  $('jump').value=frameNo;
+  const h=(frameNo/FPH).toFixed(1);
+  $('pos').innerHTML=`<span class="pill">frame ${frameNo} · ${h} h${extra||''}</span>`+badges();
+}
+
+/* freeze exactly what is on screen: no snapping to the nearest keyframe */
 function freeze(){
   const v=$('vid');
-  if(!MED.video||!v.duration){toast('no clip');return}
-  const n=FRAMES.length?FRAMES[FRAMES.length-1].frame_no+1:500;
-  jumpTo(Math.round(v.currentTime/v.duration*(n-1)));
+  if(!MED.video||!v.duration){toast('no clip loaded');return}
+  if(!v.videoWidth){toast('the clip is still loading, try again in a second');return}
+  const f=timeToFrame(v.currentTime);
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth;c.height=v.videoHeight;
+  const cx=c.getContext('2d');
+  cx.drawImage(v,0,0);
+  showStill(c.toDataURL('image/jpeg',0.92),f,' · captured');
+  IDX=nearestIndex(f);
+  $('slider').max=Math.max(FRAMES.length-1,0);$('slider').value=IDX;
+  BOXES=[];renderBoxes();          // a box belongs to the frame it was drawn on
+  toast('frozen at frame '+f+' ('+v.currentTime.toFixed(1)+' s)');
 }
+
 function goto(i){
   if(!FRAMES.length){drawEmpty('no frames');return}
   IDX=Math.max(0,Math.min(FRAMES.length-1,i));
   $('slider').max=FRAMES.length-1;$('slider').value=IDX;
   const f=FRAMES[IDX];
-  img=new Image();
-  img.onload=()=>{
-    scale=f.src.startsWith('data:')||img.width<=520?1:Math.min(1,520/img.width);
-    $('cv').width=img.width;$('cv').height=img.height;
-    redraw();
+  showStill(f.src,f.frame_no,' · '+(IDX+1)+'/'+FRAMES.length);
+  /* keep the clip in step with the frame you are looking at */
+  if(MED.video&&MED.videoSrc){
+    const v=$('vid');
+    const t=frameToTime(f.frame_no);
+    if(Math.abs((v.currentTime||0)-t)>0.2)v.currentTime=t;
+  }
+}
+/* deep link helper: ?t=12.5 seeks the clip to 12.5 s and freezes that frame */
+function seekAndFreeze(sec){
+  const v=$('vid');
+  if(!MED.video||!MED.videoSrc){toast('no clip for ?t=');return}
+  const doIt=()=>{
+    const target=Math.max(0,Math.min(v.duration-0.05,sec));
+    let done=false;
+    const fire=()=>{ if(done)return; done=true; setTimeout(freeze,120); };
+    v.addEventListener('seeked',fire,{once:true});
+    v.currentTime=target;
+    // if the browser never fires seeked (nothing buffered yet), try again
+    setTimeout(()=>{ if(!done){ v.currentTime=target; setTimeout(fire,400); } },900);
   };
-  img.onerror=()=>drawEmpty('image failed to load');
-  img.src=f.src;
-  $('jump').value=f.frame_no;
-  const h=(f.frame_no/FPH).toFixed(1);
-  $('pos').innerHTML=`<span class="pill">frame ${f.frame_no} · ${h} h · ${IDX+1}/${FRAMES.length}</span>`
-    +(MED.kind==='illustration'?'<span class="badge b-illu">illustration</span>':''
-      +(MED.kind==='own'?'<span class="badge b-own">my frames</span>':''));
+  if(v.readyState>=1) doIt();
+  else v.addEventListener('loadedmetadata',doIt,{once:true});
 }
 function step(d){goto(IDX+d)}
-function jumpTo(fn){let b=0,bd=1e9;FRAMES.forEach((f,i)=>{const dd=Math.abs(f.frame_no-fn);
-  if(dd<bd){bd=dd;b=i}});goto(b)}
+function jumpTo(fn){goto(nearestIndex(fn))}
 
 function drawEmpty(msg){
   const c=$('cv'),x=c.getContext('2d');
@@ -549,7 +617,7 @@ function buildRecord(){
     rationale_basis:$('rationale_basis').value,
     answerable_from:$('answerable_from').value,
     include_pgt:$('include_pgt').value,
-    frame_index:(f.frame_no!==undefined?f.frame_no:null),
+    frame_index:(CUR&&CUR.frame_no!==undefined?CUR.frame_no:(f.frame_no!==undefined?f.frame_no:null)),
     boxes:BOXES.map(b=>b.join(',')).join(';'),
     box_labels:BOXES.length?'cytoplasmic_string':'',
     notes:$('notes').value.trim(),

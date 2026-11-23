@@ -57,6 +57,18 @@ schema/
   label_record.md     the same, explained
 ```
 
+## Freezing a frame
+
+The demo clip is 23 s of video but only ships 16 annotated keyframes. Pressing
+**Freeze this moment** therefore *captures the frame you are looking at* with
+canvas.drawImage, instead of snapping to the nearest keyframe — so the still on
+the canvas is exactly what the clip showed, and the frame number is derived from
+the clip's current time.
+
+Sliding the frame bar moves both views together: the still loads and the video
+seeks to the matching timestamp. Deep links work too:
+`?task=cs&t=12` opens the string task frozen at 12 s.
+
 ## The record
 
 One line of JSONL per label. `schema/record.schema.json` is the authoritative

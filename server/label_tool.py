@@ -606,9 +606,21 @@ function totalFrames(){
 
 function freeze(){
   const v=$('vid');
-  if(!MED.video||!v.duration){toast('no clip');return}
-  const f=Math.round(v.currentTime/v.duration*(totalFrames()-1));
-  jumpTo(f);toast('frozen at frame '+f);
+  if(!MED.video||!v.duration){toast('no clip loaded');return}
+  const want=Math.round(v.currentTime/v.duration*(totalFrames()-1));
+  const i=nearestIndexTo(want);
+  const got=FRAMES[i].frame_no;
+  jumpTo(want);
+  // be explicit when the frame grid is sparse, so it never looks like a bug
+  if(Math.abs(got-want)>2)
+    toast('nearest annotated frame '+got+' (this clip has '+FRAMES.length+
+          ' frames; freeze wanted '+want+')');
+  else toast('frozen at frame '+got);
+}
+function nearestIndexTo(fn){
+  let b=0,bd=1e9;
+  FRAMES.forEach((f,i)=>{const d=Math.abs(f.frame_no-fn);if(d<bd){bd=d;b=i}});
+  return b;
 }
 
 function goto(i){
